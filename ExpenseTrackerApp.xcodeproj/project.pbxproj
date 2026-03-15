@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		1FAB6B662F66B0C700821104 /* GRDBSQLite in Frameworks */ = {isa = PBXBuildFile; productRef = 1FAB6B652F66B0C700821104 /* GRDBSQLite */; };
+		1FAB6B682F66B0CA00821104 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 1FAB6B672F66B0CA00821104 /* GRDB */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		1FAB6B392F66AB2A00821104 /* ExpenseTrackerApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ExpenseTrackerApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +28,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1FAB6B662F66B0C700821104 /* GRDBSQLite in Frameworks */,
+				1FAB6B682F66B0CA00821104 /* GRDB in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -33,6 +40,7 @@
 			isa = PBXGroup;
 			children = (
 				1FAB6B3B2F66AB2A00821104 /* ExpenseTrackerApp */,
+				1FAB6B642F66AFD600821104 /* Frameworks */,
 				1FAB6B3A2F66AB2A00821104 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -43,6 +51,13 @@
 				1FAB6B392F66AB2A00821104 /* ExpenseTrackerApp.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		1FAB6B642F66AFD600821104 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -65,6 +80,8 @@
 			);
 			name = ExpenseTrackerApp;
 			packageProductDependencies = (
+				1FAB6B652F66B0C700821104 /* GRDBSQLite */,
+				1FAB6B672F66B0CA00821104 /* GRDB */,
 			);
 			productName = ExpenseTrackerApp;
 			productReference = 1FAB6B392F66AB2A00821104 /* ExpenseTrackerApp.app */;
@@ -94,6 +111,9 @@
 			);
 			mainGroup = 1FAB6B302F66AB2900821104;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				1FAB6B5F2F66AC0300821104 /* XCRemoteSwiftPackageReference "GRDB" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1FAB6B3A2F66AB2A00821104 /* Products */;
 			projectDirPath = "";
@@ -251,9 +271,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -281,9 +300,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -325,6 +343,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		1FAB6B5F2F66AC0300821104 /* XCRemoteSwiftPackageReference "GRDB" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/groue/GRDB.swift";
+			requirement = {
+				branch = master;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		1FAB6B652F66B0C700821104 /* GRDBSQLite */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1FAB6B5F2F66AC0300821104 /* XCRemoteSwiftPackageReference "GRDB" */;
+			productName = GRDBSQLite;
+		};
+		1FAB6B672F66B0CA00821104 /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1FAB6B5F2F66AC0300821104 /* XCRemoteSwiftPackageReference "GRDB" */;
+			productName = GRDB;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 1FAB6B312F66AB2900821104 /* Project object */;
 }
