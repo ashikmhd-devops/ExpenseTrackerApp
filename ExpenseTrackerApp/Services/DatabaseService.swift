@@ -75,4 +75,10 @@ class DatabaseService {
             _ = try expense.delete(db)
         }
     }
+
+    func clearAllExpenses() throws {
+        try dbWriter.write { db in
+            _ = try Expense.deleteAll(db)
+        }
+    }
 }

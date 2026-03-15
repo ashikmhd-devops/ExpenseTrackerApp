@@ -2,7 +2,8 @@ import SwiftUI
 
 struct ExpenseListView: View {
     @EnvironmentObject var appViewModel: AppViewModel
-    
+    @State private var showClearConfirmation = false
+
     var body: some View {
         List {
             ForEach(appViewModel.expenses) { expense in
@@ -26,7 +27,7 @@ struct ExpenseListView: View {
                     Spacer()
                     
                     VStack(alignment: .trailing) {
-                        Text("$\(expense.amount, specifier: "%.2f")")
+                        Text("₹\(expense.amount, specifier: "%.2f")")
                             .font(.headline)
                         Text(expense.date, style: .date)
                             .font(.caption)
@@ -38,6 +39,24 @@ struct ExpenseListView: View {
             .onDelete(perform: appViewModel.deleteExpense)
         }
         .navigationTitle("Expenses")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                EditButton()
+            }
+            ToolbarItem(placement: .destructiveAction) {
+                Button(role: .destructive) {
+                    showClearConfirmation = true
+                } label: {
+                    Label("Clear All", systemImage: "trash")
+                }
+                .disabled(appViewModel.expenses.isEmpty)
+            }
+        }
+        .confirmationDialog("Clear all expenses?", isPresented: $showClearConfirmation, titleVisibility: .visible) {
+            Button("Clear All", role: .destructive) {
+                appViewModel.clearAllExpenses()
+            }
+        }
         .overlay {
             if appViewModel.expenses.isEmpty {
                 VStack {

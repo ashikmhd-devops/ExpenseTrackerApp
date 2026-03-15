@@ -52,4 +52,13 @@ class AppViewModel: ObservableObject {
         }
         fetchExpenses()
     }
+
+    func clearAllExpenses() {
+        do {
+            try DatabaseService.shared.clearAllExpenses()
+            fetchExpenses()
+        } catch {
+            errorMessage = "Failed to clear expenses: \(error.localizedDescription)"
+        }
+    }
 }

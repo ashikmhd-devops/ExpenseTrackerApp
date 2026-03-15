@@ -15,7 +15,7 @@ struct MainDashboardView: View {
                     HStack {
                         Text("Spent This Month")
                         Spacer()
-                        Text("$\(appViewModel.totalSpentThisMonth, specifier: "%.2f")")
+                        Text("₹\(appViewModel.totalSpentThisMonth, specifier: "%.2f")")
                             .bold()
                     }
                 }
