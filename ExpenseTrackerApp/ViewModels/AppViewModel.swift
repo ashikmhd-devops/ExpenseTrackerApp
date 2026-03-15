@@ -53,6 +53,17 @@ class AppViewModel: ObservableObject {
         fetchExpenses()
     }
 
+    func deleteExpenses(withIDs ids: Set<String>) {
+        expenses.filter { ids.contains($0.id) }.forEach { expense in
+            do {
+                try DatabaseService.shared.deleteExpense(expense)
+            } catch {
+                errorMessage = "Failed to delete expense: \(error.localizedDescription)"
+            }
+        }
+        fetchExpenses()
+    }
+
     func clearAllExpenses() {
         do {
             try DatabaseService.shared.clearAllExpenses()

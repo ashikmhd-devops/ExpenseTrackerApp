@@ -10,7 +10,7 @@ struct QuickAddWidgetView: View {
                 .font(.title2)
                 .bold()
             
-            TextField("e.g., Spent $45.50 at Starbucks for coffee today", text: $viewModel.inputText)
+            TextField("e.g., Spent ₹450 at Starbucks for coffee today", text: $viewModel.inputText)
                 .textFieldStyle(.roundedBorder)
                 .disabled(viewModel.isProcessing)
                 .onSubmit {
@@ -24,27 +24,54 @@ struct QuickAddWidgetView: View {
             }
             
             if let preview = viewModel.parsedExpensePreview {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Parsing Result:")
-                        .font(.headline)
-                    Text("Amount: $\(preview.amount, specifier: "%.2f")")
-                    Text("Merchant: \(preview.merchant)")
-                    Text("Category: \(preview.category.rawValue)")
-                    Text("Date: \(preview.date, style: .date)")
-                    
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Parsed Expense")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    HStack {
+                        ZStack {
+                            Circle()
+                                .fill(Color.accentColor.opacity(0.2))
+                                .frame(width: 40, height: 40)
+                            Image(systemName: preview.category.icon)
+                                .foregroundColor(.accentColor)
+                        }
+
+                        VStack(alignment: .leading) {
+                            Text(preview.merchant)
+                                .font(.headline)
+                            Text(preview.category.rawValue)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+
+                        Spacer()
+
+                        VStack(alignment: .trailing) {
+                            Text("₹\(preview.amount, specifier: "%.2f")")
+                                .font(.headline)
+                            Text(preview.date, style: .date)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
                     HStack {
                         Button("Cancel") {
                             viewModel.reset()
                         }
                         .keyboardShortcut(.cancelAction)
-                        
+
+                        Spacer()
+
                         Button("Save") {
                             viewModel.confirmAndSave()
                             dismiss()
                         }
                         .keyboardShortcut(.defaultAction)
+                        .buttonStyle(.borderedProminent)
                     }
-                    .padding(.top)
                 }
                 .padding()
                 .background(Color(NSColor.controlBackgroundColor))
