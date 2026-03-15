@@ -38,13 +38,13 @@ class OllamaService {
 
         // Pre-compute "last <weekday>" for all 7 days
         let weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-        let todayWeekday = calendar.component(.weekday, from: today) // 1=Sun, 7=Sat
+        let todayWeekday = calendar.component(.weekday, from: today)
 
         var lastWeekdays: [(String, Date)] = []
         for (index, name) in weekdayNames.enumerated() {
             let targetWeekday = index + 1
             var daysBack = todayWeekday - targetWeekday
-            if daysBack <= 0 { daysBack += 7 } // always go back, never use today
+            if daysBack <= 0 { daysBack += 7 }
             let date = calendar.date(byAdding: .day, value: -daysBack, to: today)!
             lastWeekdays.append((name, date))
         }
@@ -59,6 +59,15 @@ class OllamaService {
         return lines.joined(separator: ", ")
     }
 
+    /// If the LLM returns a future date (more than 1 day from now), roll it back one year.
+    /// This handles "Feb 28th" being mapped to next year instead of the most recent past occurrence.
+    private func mostRecentPast(_ date: Date) -> Date {
+        let calendar = Calendar.current
+        let cutoff = calendar.date(byAdding: .day, value: 1, to: Date())!
+        guard date > cutoff else { return date }
+        return calendar.date(byAdding: .year, value: -1, to: date) ?? date
+    }
+
     func parseNaturalLanguageExpense(_ input: String) async throws -> Expense {
         let isoFormatter = ISO8601DateFormatter()
         isoFormatter.formatOptions = [.withFullDate]
@@ -70,7 +79,7 @@ class OllamaService {
           "amount": float, (numeric only, no currency symbols)
           "category": string, (Must be exactly one of: Food (meals/groceries/restaurants), Fuel (petrol/diesel/EV charging), Shopping (clothes/electronics/general retail), Utilities (electricity/water/internet/phone bills), Entertainment (movies/games/subscriptions), Travel (flights/hotels/cabs), Health (doctor/medicine/hospital), Education (school/courses/books), Vehicle (car service/repair/maintenance/insurance), Miscellaneous (anything that doesn't fit above))
           "merchant": string, (The name of the store or service)
-          "date": string, (ISO8601 date format YYYY-MM-DD, use this reference to resolve relative dates: \(resolvedDateContext())),
+          "date": string, (ISO8601 date format YYYY-MM-DD. Reference: \(resolvedDateContext()). For month/day without a year (e.g. "Feb 28th", "March 5"): if that date has already passed this year use this year, if it has not yet occurred this year use last year. NEVER output a future date unless the user explicitly says "next".),
           "note": string (Optional short description or context, leave null if not applicable)
         }
         Do not output markdown, ONLY JSON.
@@ -115,7 +124,8 @@ class OllamaService {
         let dateOnlyFormatter = ISO8601DateFormatter()
         dateOnlyFormatter.formatOptions = [.withFullDate]
         let fullFormatter = ISO8601DateFormatter()
-        let date = dateOnlyFormatter.date(from: parsed.date) ?? fullFormatter.date(from: parsed.date) ?? Date()
+        let rawDate = dateOnlyFormatter.date(from: parsed.date) ?? fullFormatter.date(from: parsed.date) ?? Date()
+        let date = mostRecentPast(rawDate)
         
         return Expense(amount: parsed.amount, category: category, merchant: parsed.merchant, date: date, note: parsed.note)
     }
