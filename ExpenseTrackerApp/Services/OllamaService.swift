@@ -129,4 +129,40 @@ class OllamaService {
         
         return Expense(amount: parsed.amount, category: category, merchant: parsed.merchant, date: date, note: parsed.note)
     }
+    
+    func generateInsights(for expenses: [Expense]) async throws -> String {
+        guard !expenses.isEmpty else { return "No expenses to analyze." }
+        
+        // Summarize by category
+        var categoryTotals: [String: Double] = [:]
+        for expense in expenses {
+            categoryTotals[expense.category.rawValue, default: 0] += expense.amount
+        }
+        
+        let summaryLines = categoryTotals.map { "\($0.key): ₹\(String(format: "%.2f", $0.value))" }
+        let summaryString = summaryLines.joined(separator: "\n")
+        
+        let systemPrompt = """
+        You are an insightful financial advisor. Analyze the user's spending category summary and provide 2-3 short, actionable, and encouraging sentences of advice or observation. Keep it concise.
+        """
+        
+        let fullPrompt = "\(systemPrompt)\n\nSpending Summary:\n\(summaryString)"
+        
+        let reqBody = OllamaParseRequest(model: modelName, prompt: fullPrompt, stream: false, format: "")
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(reqBody)
+        
+        logger.info("Sending insights request to Ollama")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
+        
+        let ollamaResponse = try JSONDecoder().decode(OllamaParseResponse.self, from: data)
+        return ollamaResponse.response.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }

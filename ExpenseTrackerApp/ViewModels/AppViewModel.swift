@@ -6,6 +6,8 @@ import Combine
 class AppViewModel: ObservableObject {
     @Published var expenses: [Expense] = []
     @Published var errorMessage: String?
+    @Published var insights: String?
+    @Published var isGeneratingInsights: Bool = false
     
     // Derived statistics
     var totalSpentThisMonth: Double {
@@ -70,6 +72,27 @@ class AppViewModel: ObservableObject {
             fetchExpenses()
         } catch {
             errorMessage = "Failed to clear expenses: \(error.localizedDescription)"
+        }
+    }
+    
+    func generateInsights() {
+        guard !expenses.isEmpty else {
+            insights = "No expenses to analyze yet. Add some expenses to get insights!"
+            return
+        }
+        
+        isGeneratingInsights = true
+        insights = nil
+        errorMessage = nil
+        
+        Task {
+            do {
+                let newInsights = try await OllamaService.shared.generateInsights(for: expenses)
+                self.insights = newInsights
+            } catch {
+                self.errorMessage = "Failed to generate insights: \(error.localizedDescription)"
+            }
+            self.isGeneratingInsights = false
         }
     }
 }

@@ -8,6 +8,7 @@ struct MainDashboardView: View {
         ZStack(alignment: .bottomTrailing) {
             VStack(spacing: 0) {
                 summaryBanner
+                insightsSection
                 Divider()
                 ExpenseListView()
             }
@@ -41,9 +42,65 @@ struct MainDashboardView: View {
                     .font(.system(size: 28, weight: .bold))
             }
             Spacer()
+            
+            Button(action: {
+                appViewModel.generateInsights()
+            }) {
+                HStack(spacing: 6) {
+                    if appViewModel.isGeneratingInsights {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                    } else {
+                        Image(systemName: "sparkles")
+                    }
+                    Text("Insights")
+                }
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.accentColor)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.accentColor.opacity(0.1))
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(appViewModel.isGeneratingInsights || appViewModel.expenses.isEmpty)
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 16)
+    }
+    
+    // MARK: - Insights Section
+    
+    @ViewBuilder
+    private var insightsSection: some View {
+        if let insights = appViewModel.insights {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: "sparkles.rectangle.stack.fill")
+                        .foregroundColor(.accentColor)
+                    Text("AI Insights")
+                        .font(.headline)
+                    Spacer()
+                    Button(action: { appViewModel.insights = nil }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                
+                Text(insights)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineLimit(nil)
+            }
+            .padding(16)
+            .background(Color.accentColor.opacity(0.05))
+            .cornerRadius(12)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 16)
+            .transition(.opacity.combined(with: .move(edge: .top)))
+            .animation(.easeInOut, value: appViewModel.insights)
+        }
     }
 
     // MARK: - FAB
