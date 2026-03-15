@@ -1,6 +1,3 @@
-# This workflow will build a Swift project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-swift
-
 name: Swift
 
 on:
@@ -11,12 +8,47 @@ on:
 
 jobs:
   build:
-
     runs-on: macos-latest
 
     steps:
     - uses: actions/checkout@v4
+
     - name: Build
-      run: swift build -v
-    - name: Run tests
-      run: swift test -v
+      id: build
+      run: |
+        xcodebuild build \
+          -project ExpenseTrackerApp.xcodeproj \
+          -scheme ExpenseTrackerApp \
+          -destination 'platform=macOS' \
+          CODE_SIGNING_ALLOWED=NO \
+          2>&1 | tee build.log
+        echo "status=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+
+    - name: Write job summary
+      if: always()
+      run: |
+        STATUS=${{ steps.build.outputs.status }}
+        if [ "$STATUS" = "0" ]; then
+          RESULT="✅ Build succeeded"
+        else
+          RESULT="❌ Build failed"
+        fi
+
+        echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| | |" >> $GITHUB_STEP_SUMMARY
+        echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+        echo "| **Result** | $RESULT |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Scheme** | ExpenseTrackerApp |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Platform** | macOS |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Runner** | ${{ runner.os }} ${{ runner.arch }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Commit** | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Triggered by** | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        if [ "$STATUS" != "0" ]; then
+          echo "### Build Log (last 50 lines)" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -50 build.log >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+        fi
