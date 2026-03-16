@@ -9,7 +9,6 @@
 ![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey?logo=apple)
 ![Swift](https://img.shields.io/badge/Swift-5.9-orange?logo=swift)
 ![AI](https://img.shields.io/badge/AI-Ollama%20%7C%20llama3.2%20%7C%20llava-blueviolet)
-![License](https://img.shields.io/badge/license-MIT-green)
 
 </div>
 
