@@ -95,4 +95,49 @@ class AppViewModel: ObservableObject {
             self.isGeneratingInsights = false
         }
     }
+    
+    // MARK: - Natural Language Query
+    
+    @Published var queryInput: String = ""
+    @Published var queryResult: String?
+    @Published var isRunningQuery: Bool = false
+    
+    func runNLQuery(_ query: String) {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        
+        isRunningQuery = true
+        queryResult = nil
+        errorMessage = nil
+        
+        Task {
+            do {
+                // 1. Convert natural language to SQL via Ollama
+                let sql = try await OllamaService.shared.generateSQLQuery(from: query)
+                print("Generated SQL: \(sql)") // useful for debugging
+                
+                // 2. Execute SQL against local SQLite database
+                let rows = try DatabaseService.shared.executeRawQuery(sql)
+                
+                // 3. Format the result
+                var formattedResult = "Query: \(sql)\n\n"
+                
+                if rows.isEmpty {
+                    formattedResult += "No results found."
+                } else {
+                    for (index, row) in rows.enumerated() {
+                        formattedResult += "Row \(index + 1):\n"
+                        for (key, value) in row {
+                            formattedResult += "  \(key): \(value)\n"
+                        }
+                        formattedResult += "\n"
+                    }
+                }
+                self.queryResult = formattedResult.trimmingCharacters(in: .whitespacesAndNewlines)
+            } catch {
+                self.errorMessage = "Query failed: \(error.localizedDescription)"
+                self.queryResult = "Error executing query."
+            }
+            self.isRunningQuery = false
+        }
+    }
 }

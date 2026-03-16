@@ -60,11 +60,17 @@ struct ExpenseRowView: View {
         // Cap row content at 900px and center it
         .frame(maxWidth: 900)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
         .background(
-            RoundedRectangle(cornerRadius: 14)
-                .fill(isSelected ? Color.accentColor.opacity(0.18) : cardBackground)
+            RoundedRectangle(cornerRadius: 16)
+                .fill(cardBackground)
+                .shadow(
+                    color: isSelected ? expense.category.iconColor.opacity(0.4) : .clear,
+                    radius: isSelected ? 8 : 0,
+                    x: 0,
+                    y: 0
+                )
         )
         .onHover { isHovered = $0 }
     }

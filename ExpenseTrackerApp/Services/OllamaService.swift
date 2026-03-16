@@ -165,4 +165,59 @@ class OllamaService {
         let ollamaResponse = try JSONDecoder().decode(OllamaParseResponse.self, from: data)
         return ollamaResponse.response.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+    
+    func generateSQLQuery(from input: String) async throws -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let todayStr = formatter.string(from: Date())
+        
+        let systemPrompt = """
+        You are a highly accurate SQLite data extraction assistant.
+        Convert the user's natural language question into a valid SQLite query.
+        
+        The database contains a single table named `expense` with the following schema:
+        - `id` (TEXT, Primary Key)
+        - `amount` (REAL, not null)
+        - `category` (TEXT, not null - e.g., 'Food', 'Fuel', 'Shopping')
+        - `merchant` (TEXT, not null)
+        - `date` (DATETIME, not null, format: 'YYYY-MM-DD HH:MM:SS.SSS')
+        - `note` (TEXT)
+        
+        Today's date is \(todayStr).
+        
+        Rules:
+        1. Output ONLY the raw SQL query. Do NOT wrap it in markdown blockquotes like ` ```sql `. Do NOT provide any explanation.
+        2. Use aggregate functions (SUM, AVG, COUNT) if the user asks for totals, averages, or counts. ALWAYS wrap SUM with COALESCE to return 0 instead of NULL, e.g., `COALESCE(SUM(amount), 0)`.
+        3. Use simple, standard SQLite syntax.
+        4. When comparing dates, DO NOT use `LIKE '%/%/1%'`. Use `strftime('%m', date) = '01'` or strict date boundaries `date >= '2023-01-01' AND date < '2023-02-01'`.
+        5. Return exactly the query, starting with SELECT.
+        
+        Example Input: "How much did I spend on Food this month?"
+        Example Output: SELECT COALESCE(SUM(amount), 0) FROM expense WHERE category = 'Food' AND date >= date('now', 'start of month');
+        """
+        
+        let fullPrompt = "\(systemPrompt)\n\nUser Question: \(input)"
+        let reqBody = OllamaParseRequest(model: modelName, prompt: fullPrompt, stream: false, format: "")
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(reqBody)
+        
+        logger.info("Sending SQL generation request to Ollama: \(input)")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
+        
+        let ollamaResponse = try JSONDecoder().decode(OllamaParseResponse.self, from: data)
+        
+        // Strip out any markdown code blocks the LLM might have stubbornly added anyway
+        var sql = ollamaResponse.response.trimmingCharacters(in: .whitespacesAndNewlines)
+        if sql.hasPrefix("```sql") { sql.removeFirst(6) }
+        if sql.hasPrefix("```") { sql.removeFirst(3) }
+        if sql.hasSuffix("```") { sql.removeLast(3) }
+        
+        return sql.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }

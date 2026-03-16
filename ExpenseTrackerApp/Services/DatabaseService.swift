@@ -81,4 +81,31 @@ class DatabaseService {
             _ = try Expense.deleteAll(db)
         }
     }
+    
+    // MARK: - Raw SQL Execution
+    
+    func executeRawQuery(_ sql: String) throws -> [[String: String]] {
+        try dbWriter.read { db in
+            let rows = try Row.fetchAll(db, sql: sql)
+            var result: [[String: String]] = []
+            
+            for row in rows {
+                var rowDict: [String: String] = [:]
+                for (columnName, databaseValue) in row {
+                    if let value = String.fromDatabaseValue(databaseValue) {
+                        rowDict[columnName] = value
+                    } else if let value = Double.fromDatabaseValue(databaseValue) {
+                        rowDict[columnName] = String(value)
+                    } else if let value = Int64.fromDatabaseValue(databaseValue) {
+                        rowDict[columnName] = String(value)
+                    } else {
+                        // For nulls or other types, we can use an empty string or literal "null"
+                        rowDict[columnName] = databaseValue.isNull ? "NULL" : String(describing: databaseValue)
+                    }
+                }
+                result.append(rowDict)
+            }
+            return result
+        }
+    }
 }
