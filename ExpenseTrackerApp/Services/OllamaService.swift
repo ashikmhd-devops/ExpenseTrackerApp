@@ -29,6 +29,16 @@ struct OllamaChatResponse: Codable {
     let message: OllamaChatMessage
 }
 
+// MARK: - Vision API
+
+struct OllamaVisionRequest: Codable {
+    let model: String
+    let prompt: String
+    let images: [String]
+    let stream: Bool
+    let format: String
+}
+
 struct ParsedExpense: Codable {
     let amount: Double
     let category: String
@@ -321,5 +331,84 @@ class OllamaService {
 
         let chatResponse = try JSONDecoder().decode(OllamaChatResponse.self, from: data)
         return chatResponse.message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // MARK: - Receipt Vision Scanning
+
+    func extractExpenseFromReceipt(imageBase64: String) async throws -> ParsedExpense {
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withFullDate]
+        let todayStr = isoFormatter.string(from: Date())
+
+        let prompt = """
+        You are a transaction extraction assistant. The image may be ANY of:
+        - A physical or digital receipt
+        - A bank SMS or email notification
+        - A UPI/IMPS/NEFT debit alert (e.g. from HDFC, SBI, ICICI, Paytm, PhonePe)
+        - A credit card statement row or screenshot
+
+        INSTRUCTIONS — READ EVERY WORD IN THE IMAGE CAREFULLY. Do NOT guess or invent values.
+
+        1. AMOUNT: Look for "Rs.", "₹", "INR", "debited", "amount", "total", "paid". Extract the numeric value only (e.g. 199.00).
+        2. MERCHANT:
+           - For a UPI VPA like "netflixupi.payu@hdfcbank" → extract "Netflix"
+           - For "SWIGGY.COM", "ZOMATO", "AMAZON PAY" → use the brand name
+           - For a shop receipt → use the store name at the top
+           - Clean up: strip .COM, PAY, UPI, bank suffixes; capitalize properly
+        3. DATE: Common Indian bank formats → convert to YYYY-MM-DD:
+           - "16-03-26" or "16/03/26" = DD-MM-YY → 2026-03-16
+           - "16-03-2026" = DD-MM-YYYY → 2026-03-16
+           - "Mar 16, 2026" → 2026-03-16
+           - Use \(todayStr) only if no date is visible at all
+        4. CATEGORY — pick the single best match:
+           - Food: restaurants, food delivery, grocery, Swiggy, Zomato, BigBasket
+           - Fuel: petrol, diesel, HPCL, BPCL, IndianOil, Shell fuel
+           - Shopping: Amazon, Flipkart, Myntra, clothing, electronics
+           - Utilities: electricity, water, gas, internet, mobile recharge, JIO, Airtel, BSNL
+           - Entertainment: Netflix, Spotify, YouTube Premium, OTT, movies, games
+           - Travel: flights, hotels, Uber, Ola, MakeMyTrip, IRCTC, train, cab
+           - Health: pharmacy, hospital, doctor, MedPlus, Apollo
+           - Education: courses, school fees, books
+           - Vehicle: car service, insurance, RTO, repair
+           - Miscellaneous: anything else
+        5. NOTE: One sentence describing what it is (e.g. "Monthly Netflix Premium subscription").
+
+        Output ONLY valid JSON, no other text:
+        {
+          "amount": <number>,
+          "category": "<category>",
+          "merchant": "<clean merchant name>",
+          "date": "<YYYY-MM-DD>",
+          "note": "<description or null>"
+        }
+        """
+
+        let reqBody = OllamaVisionRequest(model: "llava:latest", prompt: prompt, images: [imageBase64], stream: false, format: "json")
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(reqBody)
+        request.timeoutInterval = 120
+
+        logger.info("Sending vision request to Ollama (llava)")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw NSError(domain: "OllamaService", code: 4,
+                          userInfo: [NSLocalizedDescriptionKey: "Vision model unavailable. Run: ollama pull llava"])
+        }
+
+        let ollamaResponse = try JSONDecoder().decode(OllamaParseResponse.self, from: data)
+        guard let jsonData = ollamaResponse.response.data(using: .utf8) else {
+            throw URLError(.cannotParseResponse)
+        }
+
+        do {
+            return try JSONDecoder().decode(ParsedExpense.self, from: jsonData)
+        } catch {
+            logger.error("Vision: failed to decode. Raw: \(ollamaResponse.response)")
+            throw NSError(domain: "OllamaService", code: 5,
+                          userInfo: [NSLocalizedDescriptionKey: "Could not parse receipt scan result. Try a clearer image."])
+        }
     }
 }

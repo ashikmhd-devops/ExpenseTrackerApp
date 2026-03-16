@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct MainDashboardView: View {
     @EnvironmentObject var appViewModel: AppViewModel
@@ -6,6 +7,7 @@ struct MainDashboardView: View {
     @State private var showingBudgetEditor = false
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var selectedTab: Int = 0
+    @State private var isDropTargeted: Bool = false
     @AppStorage("monthlyBudget") private var monthlyBudget: Double = 50000.0
 
     var body: some View {
@@ -27,6 +29,15 @@ struct MainDashboardView: View {
         }
         .sheet(isPresented: $showingBudgetEditor) {
             BudgetEditorView(monthlyBudget: $monthlyBudget)
+        }
+        .sheet(isPresented: Binding(
+            get: { appViewModel.scannedExpense != nil },
+            set: { if !$0 { appViewModel.scannedExpense = nil } }
+        )) {
+            if let parsed = appViewModel.scannedExpense {
+                ScannedReceiptConfirmView(parsed: parsed)
+                    .environmentObject(appViewModel)
+            }
         }
         .alert("Error", isPresented: Binding<Bool>(
             get: { appViewModel.errorMessage != nil },
@@ -52,8 +63,39 @@ struct MainDashboardView: View {
                     ExpenseListView()
                 }
                 fab
+
+                // Drop target visual hint
+                if isDropTargeted {
+                    DropTargetOverlay()
+                        .allowsHitTesting(false)
+                }
+
+                // Processing overlay while llava reads the receipt
+                if appViewModel.isProcessingReceipt {
+                    Color.black.opacity(0.35)
+                        .ignoresSafeArea()
+                        .allowsHitTesting(true)
+                    ProcessingReceiptCard(fileName: appViewModel.receiptFileName)
+                        .transition(.scale(scale: 0.9).combined(with: .opacity))
+                }
             }
+            .animation(.spring(response: 0.3), value: appViewModel.isProcessingReceipt)
             .navigationTitle("Expenses")
+            .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+                guard let provider = providers.first else { return false }
+                _ = provider.loadItem(forTypeIdentifier: "public.file-url", options: nil) { item, _ in
+                    guard let data = item as? Data,
+                          let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
+                    // Copy to temp so the security-scoped URL stays valid
+                    let tmpURL = FileManager.default.temporaryDirectory
+                        .appendingPathComponent(url.lastPathComponent)
+                    try? FileManager.default.copyItem(at: url, to: tmpURL)
+                    DispatchQueue.main.async {
+                        appViewModel.processDroppedFile(url: tmpURL)
+                    }
+                }
+                return true
+            }
         }
     }
 

@@ -110,6 +110,11 @@ class AppViewModel: ObservableObject {
     @Published var chatMessages: [ChatMessage] = []
     @Published var isChatLoading: Bool = false
 
+    // MARK: - Receipt Scanning
+    @Published var isProcessingReceipt: Bool = false
+    @Published var scannedExpense: ParsedExpense? = nil
+    @Published var receiptFileName: String = ""
+
     func sendChatMessage(_ content: String) {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -151,6 +156,42 @@ class AppViewModel: ObservableObject {
 
     func sendToChatFromSearch(_ text: String) {
         sendChatMessage(text)
+    }
+
+    func processDroppedFile(url: URL) {
+        let ext = url.pathExtension.lowercased()
+        guard ["pdf", "jpg", "jpeg", "png", "heic", "tiff"].contains(ext) else {
+            errorMessage = "Unsupported file. Drop a PDF or image (JPG, PNG, HEIC)."
+            return
+        }
+        isProcessingReceipt = true
+        receiptFileName = url.lastPathComponent
+
+        Task {
+            do {
+                let base64: String
+                if ext == "pdf" {
+                    guard let image = ReceiptImageHelper.pdfToImage(url: url),
+                          let b64 = ReceiptImageHelper.imageToBase64(image) else {
+                        throw NSError(domain: "Receipt", code: 1,
+                                      userInfo: [NSLocalizedDescriptionKey: "Could not render PDF page"])
+                    }
+                    base64 = b64
+                } else {
+                    guard let image = NSImage(contentsOf: url),
+                          let b64 = ReceiptImageHelper.imageToBase64(image) else {
+                        throw NSError(domain: "Receipt", code: 2,
+                                      userInfo: [NSLocalizedDescriptionKey: "Could not read image file"])
+                    }
+                    base64 = b64
+                }
+                let parsed = try await OllamaService.shared.extractExpenseFromReceipt(imageBase64: base64)
+                self.scannedExpense = parsed
+            } catch {
+                self.errorMessage = "Receipt scan failed: \(error.localizedDescription)"
+            }
+            self.isProcessingReceipt = false
+        }
     }
 
     // MARK: - Natural Language Query
