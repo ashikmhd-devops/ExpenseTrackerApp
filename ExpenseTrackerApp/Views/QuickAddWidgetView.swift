@@ -19,14 +19,33 @@ struct QuickAddWidgetView: View {
                 .font(.title2)
                 .bold()
             
-            TextField("e.g., Spent ₹450 at Starbucks for coffee today", text: $viewModel.inputText)
-                .textFieldStyle(.roundedBorder)
-                .disabled(viewModel.isProcessing)
-                .onSubmit {
-                    Task {
-                        await viewModel.parseInput()
+            HStack(spacing: 8) {
+                TextField("e.g., Spent ₹450 at Starbucks for coffee today", text: $viewModel.inputText)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(viewModel.isProcessing)
+                    .onSubmit {
+                        Task {
+                            await viewModel.parseInput()
+                        }
                     }
+                
+                if viewModel.suggestedExpense != nil {
+                    Button(action: {
+                        viewModel.applyMagicWand()
+                    }) {
+                        Image(systemName: "wand.and.stars")
+                            .font(.system(size: 16))
+                            .foregroundColor(.purple)
+                            .padding(8)
+                            .background(Color.purple.opacity(0.15))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Pre-fill from history")
+                    .transition(.scale.combined(with: .opacity))
+                    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: viewModel.suggestedExpense != nil)
                 }
+            }
             
             // We remove the separate ProgressView and placeholder logic to integrate it into the card directly
             

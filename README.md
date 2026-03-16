@@ -1,6 +1,7 @@
 # ExpenseTrackerApp
 
 [![Swift](https://github.com/ashikmhd-devops/ExpenseTrackerApp/actions/workflows/swift.yml/badge.svg)](https://github.com/ashikmhd-devops/ExpenseTrackerApp/actions/workflows/swift.yml)
+
 A macOS expense tracker that uses a local LLM (via Ollama) to parse natural language input into structured expense records.
 
 ## Features
