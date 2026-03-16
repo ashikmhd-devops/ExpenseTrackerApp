@@ -12,6 +12,23 @@ struct OllamaParseResponse: Codable {
     let response: String
 }
 
+// MARK: - Chat API (Ollama /api/chat)
+
+struct OllamaChatMessage: Codable {
+    let role: String
+    let content: String
+}
+
+struct OllamaChatRequest: Codable {
+    let model: String
+    let messages: [OllamaChatMessage]
+    let stream: Bool
+}
+
+struct OllamaChatResponse: Codable {
+    let message: OllamaChatMessage
+}
+
 struct ParsedExpense: Codable {
     let amount: Double
     let category: String
@@ -49,8 +66,18 @@ class OllamaService {
             lastWeekdays.append((name, date))
         }
 
+        let hour = calendar.component(.hour, from: today)
+        let timeOfDay: String
+        switch hour {
+        case 5..<12:  timeOfDay = "morning (\(hour):00)"
+        case 12..<17: timeOfDay = "afternoon (\(hour):00)"
+        case 17..<21: timeOfDay = "evening (\(hour):00)"
+        default:      timeOfDay = "night (\(hour):00)"
+        }
+
         var lines = [
             "today = \(isoFormatter.string(from: today))",
+            "time_of_day = \(timeOfDay)",
             "yesterday = \(isoFormatter.string(from: yesterday))"
         ]
         for (name, date) in lastWeekdays {
@@ -77,9 +104,9 @@ class OllamaService {
         Output MUST be in strictly valid JSON matching this schema:
         {
           "amount": float, (numeric only, no currency symbols)
-          "category": string, (Must be exactly one of: Food (meals/groceries/restaurants), Fuel (petrol/diesel/EV charging), Shopping (clothes/electronics/general retail), Utilities (electricity/water/internet/phone bills), Entertainment (movies/games/subscriptions), Travel (flights/hotels/cabs), Health (doctor/medicine/hospital), Education (school/courses/books), Vehicle (car service/repair/maintenance/insurance), Miscellaneous (anything that doesn't fit above))
+          "category": string, (Must be exactly one of: Food (meals/groceries/restaurants), Fuel (petrol/diesel/EV charging — use amount and time_of_day for ambiguous merchants: e.g. "Shell"/"BP"/"HPCL" at ₹800–3000 during morning is likely Groceries/Food, but at ₹1500+ afternoon/evening is likely Fuel; "Indian Oil"/"Bharat Petroleum" is almost always Fuel), Shopping (clothes/electronics/general retail), Utilities (electricity/water/internet/phone bills), Entertainment (movies/games/subscriptions), Travel (flights/hotels/cabs), Health (doctor/medicine/hospital), Education (school/courses/books), Vehicle (car service/repair/maintenance/insurance), Miscellaneous (anything that doesn't fit above))
           "merchant": string, (The name of the store or service)
-          "date": string, (ISO8601 date format YYYY-MM-DD. Reference: \(resolvedDateContext()). For month/day without a year (e.g. "Feb 28th", "March 5"): if that date has already passed this year use this year, if it has not yet occurred this year use last year. NEVER output a future date unless the user explicitly says "next".),
+          "date": string, (ISO8601 date format YYYY-MM-DD. Reference: \(resolvedDateContext()). YEAR RULE: if the user does not mention a year, ALWAYS assume the most recent past occurrence. For month/day (e.g. "Feb 28th", "March 5"): if that date has already passed this year use this year; if it has not yet occurred this year use last year. NEVER output a future date unless the user explicitly says "next" or "upcoming".),
           "note": string (Optional short description or context, leave null if not applicable)
         }
         Do not output markdown, ONLY JSON.
@@ -219,5 +246,80 @@ class OllamaService {
         if sql.hasSuffix("```") { sql.removeLast(3) }
         
         return sql.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // MARK: - Contextual Chat
+
+    func chat(messages: [ChatMessage], expenses: [Expense]) async throws -> String {
+        let calendar = Calendar.current
+        let now = Date()
+        let currentMonth = calendar.component(.month, from: now)
+        let currentYear  = calendar.component(.year, from: now)
+
+        let monthExpenses = expenses.filter {
+            calendar.component(.month, from: $0.date) == currentMonth &&
+            calendar.component(.year,  from: $0.date) == currentYear
+        }
+
+        var categoryTotals: [String: Double] = [:]
+        for expense in monthExpenses {
+            categoryTotals[expense.category.rawValue, default: 0] += expense.amount
+        }
+        let totalThisMonth = monthExpenses.reduce(0) { $0 + $1.amount }
+
+        let monthName = DateFormatter().monthSymbols[currentMonth - 1]
+        let breakdown = categoryTotals
+            .sorted { $0.value > $1.value }
+            .map { "  \($0.key): ₹\(String(format: "%.0f", $0.value))" }
+            .joined(separator: "\n")
+
+        let isoFmt = ISO8601DateFormatter()
+        isoFmt.formatOptions = [.withFullDate]
+        let recentLines = expenses.prefix(15).map {
+            "  \($0.merchant) (\($0.category.rawValue)) ₹\(String(format: "%.0f", $0.amount)) on \(isoFmt.string(from: $0.date))"
+        }.joined(separator: "\n")
+
+        let systemContent = """
+        You are a smart personal finance assistant built into an expense tracker app. \
+        You have full access to the user's actual spending data. Be conversational, insightful, \
+        and proactive. When relevant, suggest specific budget limits based on their real data. \
+        Use context to interpret ambiguous items — for example "Shell" could be Fuel or Groceries \
+        depending on the amount and time of day. Keep replies concise (2–4 sentences unless more \
+        detail is asked). Always use ₹ for currency.
+
+        === Spending this month (\(monthName) \(currentYear)) ===
+        Total: ₹\(String(format: "%.0f", totalThisMonth))
+        \(breakdown.isEmpty ? "  No expenses yet." : breakdown)
+
+        === Recent expenses (up to 15) ===
+        \(recentLines.isEmpty ? "  None." : recentLines)
+        """
+
+        var apiMessages: [OllamaChatMessage] = [
+            OllamaChatMessage(role: "system", content: systemContent)
+        ]
+        for msg in messages {
+            apiMessages.append(OllamaChatMessage(
+                role: msg.role == .user ? "user" : "assistant",
+                content: msg.content
+            ))
+        }
+
+        let chatEndpoint = URL(string: "http://127.0.0.1:11434/api/chat")!
+        let reqBody = OllamaChatRequest(model: modelName, messages: apiMessages, stream: false)
+        var request = URLRequest(url: chatEndpoint)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(reqBody)
+
+        logger.info("Sending chat request to Ollama (\(messages.count) messages)")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
+
+        let chatResponse = try JSONDecoder().decode(OllamaChatResponse.self, from: data)
+        return chatResponse.message.content.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

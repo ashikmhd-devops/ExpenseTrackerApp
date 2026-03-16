@@ -74,6 +74,15 @@ class AppViewModel: ObservableObject {
             errorMessage = "Failed to clear expenses: \(error.localizedDescription)"
         }
     }
+
+    func updateExpense(_ expense: Expense) {
+        do {
+            try DatabaseService.shared.saveExpense(expense)
+            fetchExpenses()
+        } catch {
+            errorMessage = "Failed to update expense: \(error.localizedDescription)"
+        }
+    }
     
     func generateInsights() {
         guard !expenses.isEmpty else {
@@ -96,6 +105,54 @@ class AppViewModel: ObservableObject {
         }
     }
     
+    // MARK: - AI Chat
+
+    @Published var chatMessages: [ChatMessage] = []
+    @Published var isChatLoading: Bool = false
+
+    func sendChatMessage(_ content: String) {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        chatMessages.append(ChatMessage(role: .user, content: trimmed))
+        isChatLoading = true
+
+        Task {
+            do {
+                let reply = try await OllamaService.shared.chat(messages: chatMessages, expenses: expenses)
+                self.chatMessages.append(ChatMessage(role: .assistant, content: reply))
+            } catch {
+                self.chatMessages.append(ChatMessage(role: .assistant,
+                    content: "Sorry, I couldn't connect to Ollama. Make sure it's running (`ollama serve`)."))
+            }
+            self.isChatLoading = false
+        }
+    }
+
+    func startProactiveChat() {
+        guard chatMessages.isEmpty else { return }
+        isChatLoading = true
+        Task {
+            do {
+                let greeting = try await OllamaService.shared.chat(
+                    messages: [ChatMessage(role: .user, content: "Review my spending and give me 2–3 proactive observations or suggestions.")],
+                    expenses: expenses
+                )
+                self.chatMessages.append(ChatMessage(role: .user,
+                    content: "Review my spending and give me 2–3 proactive observations or suggestions."))
+                self.chatMessages.append(ChatMessage(role: .assistant, content: greeting))
+            } catch {
+                self.chatMessages.append(ChatMessage(role: .assistant,
+                    content: "Couldn't connect to Ollama. Make sure it's running (`ollama serve`)."))
+            }
+            self.isChatLoading = false
+        }
+    }
+
+    func sendToChatFromSearch(_ text: String) {
+        sendChatMessage(text)
+    }
+
     // MARK: - Natural Language Query
     
     @Published var queryInput: String = ""

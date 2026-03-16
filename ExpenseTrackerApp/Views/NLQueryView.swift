@@ -2,21 +2,22 @@ import SwiftUI
 
 struct NLQueryView: View {
     @EnvironmentObject var appViewModel: AppViewModel
-    
+    @Binding var selectedTab: Int
+
     var body: some View {
         VStack(spacing: 12) {
             // Input Region
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
-                
+
                 TextField("Ask about your expenses...", text: $appViewModel.queryInput)
                     .textFieldStyle(.plain)
                     .font(.system(size: 14))
                     .onSubmit {
-                        appViewModel.runNLQuery(appViewModel.queryInput)
+                        handleSubmit()
                     }
-                
+
                 if appViewModel.isRunningQuery {
                     ProgressView()
                         .scaleEffect(0.6)
@@ -39,7 +40,7 @@ struct NLQueryView: View {
                 RoundedRectangle(cornerRadius: 12)
                     .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
             )
-            
+
             // Output Region
             if let result = appViewModel.queryResult {
                 ScrollView {
@@ -63,5 +64,32 @@ struct NLQueryView: View {
         .padding(.horizontal, 20)
         .padding(.top, 16)
         .padding(.bottom, appViewModel.queryResult == nil ? 4 : 12)
+    }
+
+    private func handleSubmit() {
+        let text = appViewModel.queryInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+
+        if isConversationalQuestion(text) {
+            appViewModel.queryInput = ""
+            appViewModel.queryResult = nil
+            appViewModel.sendToChatFromSearch(text)
+            withAnimation { selectedTab = 1 }
+        } else {
+            appViewModel.runNLQuery(text)
+        }
+    }
+
+    /// Returns true for natural language questions that the AI advisor should answer.
+    private func isConversationalQuestion(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        let questionWords = [
+            "how", "what", "why", "when", "where", "which",
+            "should", "can", "could", "would",
+            "is ", "are ", "do ", "does ",
+            "tell me", "show me", "explain", "compare",
+            "suggest", "recommend", "help me", "analyse", "analyze"
+        ]
+        return lower.hasSuffix("?") || questionWords.contains { lower.hasPrefix($0) }
     }
 }

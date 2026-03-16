@@ -11,6 +11,7 @@ struct ExpenseRowView: View {
     let expense: Expense
     let isSelected: Bool
     let onDelete: () -> Void
+    let onEdit: () -> Void
 
     @State private var isHovered = false
 
@@ -42,22 +43,32 @@ struct ExpenseRowView: View {
 
             Spacer()
 
-            // Price — same vertical band as title
+            // Price
             Text("₹\(expense.amount, specifier: "%.2f")")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(.white)
 
-            // Hover-reveal delete
-            Button(role: .destructive, action: onDelete) {
-                Image(systemName: "trash")
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(.red.opacity(0.85))
+            // Hover-reveal action buttons
+            HStack(spacing: 6) {
+                Button(action: onEdit) {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(.white.opacity(0.75))
+                }
+                .buttonStyle(.borderless)
+                .help("Edit expense")
+
+                Button(role: .destructive, action: onDelete) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(.red.opacity(0.85))
+                }
+                .buttonStyle(.borderless)
+                .help("Delete expense")
             }
-            .buttonStyle(.borderless)
             .opacity(isHovered || isSelected ? 1 : 0)
-            .frame(width: 20)
+            .frame(width: 44)
         }
-        // Cap row content at 900px and center it
         .frame(maxWidth: 900)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
@@ -81,6 +92,7 @@ struct ExpenseListView: View {
     @State private var showClearConfirmation = false
     @State private var selection: Set<String> = []
     @State private var expenseToDelete: Expense?
+    @State private var expenseToEdit: Expense?
 
     var body: some View {
         List(selection: $selection) {
@@ -88,7 +100,8 @@ struct ExpenseListView: View {
                 ExpenseRowView(
                     expense: expense,
                     isSelected: selection.contains(expense.id),
-                    onDelete: { expenseToDelete = expense }
+                    onDelete: { expenseToDelete = expense },
+                    onEdit: { expenseToEdit = expense }
                 )
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
@@ -136,6 +149,10 @@ struct ExpenseListView: View {
                         .foregroundColor(.secondary)
                 }
             }
+        }
+        .sheet(item: $expenseToEdit) { expense in
+            EditExpenseView(expense: expense)
+                .environmentObject(appViewModel)
         }
     }
 }
