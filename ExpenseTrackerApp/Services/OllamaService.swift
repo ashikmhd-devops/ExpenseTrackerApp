@@ -114,7 +114,7 @@ class OllamaService {
         Output MUST be in strictly valid JSON matching this schema:
         {
           "amount": float, (numeric only, no currency symbols)
-          "category": string, (Must be exactly one of: Food (meals/groceries/restaurants), Fuel (petrol/diesel/EV charging — use amount and time_of_day for ambiguous merchants: e.g. "Shell"/"BP"/"HPCL" at ₹800–3000 during morning is likely Groceries/Food, but at ₹1500+ afternoon/evening is likely Fuel; "Indian Oil"/"Bharat Petroleum" is almost always Fuel), Shopping (clothes/electronics/general retail), Utilities (electricity/water/internet/phone bills), Entertainment (movies/games/subscriptions), Travel (flights/hotels/cabs), Health (doctor/medicine/hospital), Education (school/courses/books), Vehicle (car service/repair/maintenance/insurance), Investment (mutual funds/SIP/stocks/shares/bonds/crypto/demat/trading), Miscellaneous (anything that doesn't fit above))
+          "category": string, (Must be exactly one of: Food (meals/groceries/restaurants), Fuel (petrol/diesel/EV charging — use amount and time_of_day for ambiguous merchants: e.g. "Shell"/"BP"/"HPCL" at ₹800–3000 during morning is likely Groceries/Food, but at ₹1500+ afternoon/evening is likely Fuel; "Indian Oil"/"Bharat Petroleum" is almost always Fuel), Shopping (clothes/electronics/general retail), Utilities (electricity/water/internet/phone bills), Entertainment (movies/games/subscriptions), Travel (flights/hotels/cabs), Health (doctor/medicine/hospital), Education (school/courses/books), Vehicle (car service/repair/maintenance/insurance), Investment (mutual funds/SIP/stocks/shares/bonds/crypto/demat/trading), Credit Card Bill (credit card payment/bill/outstanding/due), Miscellaneous (anything that doesn't fit above))
           "merchant": string, (The name of the store or service)
           "date": string, (ISO8601 date format YYYY-MM-DD. Reference: \(resolvedDateContext()). YEAR RULE: if the user does not mention a year, ALWAYS assume the most recent past occurrence. For month/day (e.g. "Feb 28th", "March 5"): if that date has already passed this year use this year; if it has not yet occurred this year use last year. NEVER output a future date unless the user explicitly says "next" or "upcoming".),
           "note": string (Optional short description or context, leave null if not applicable)
@@ -374,6 +374,7 @@ class OllamaService {
            - Education: courses, school fees, books
            - Vehicle: car service, insurance, RTO, repair
            - Investment: mutual funds, SIP, stocks, shares, bonds, crypto, demat
+           - Credit Card Bill: credit card payment, bill payment, outstanding due, HDFC card, ICICI card, SBI card, Axis card
            - Miscellaneous: anything else
         5. NOTE: One sentence describing what it is (e.g. "Monthly Netflix Premium subscription").
 
