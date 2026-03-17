@@ -6,10 +6,10 @@ struct QuickAddWidgetView: View {
     @State private var isEditing: Bool = false
     
     private var expenseBinding: Binding<Expense>? {
-        guard let _ = viewModel.parsedExpensePreview else { return nil }
+        guard viewModel.parsedExpensePreview != nil else { return nil }
         return Binding(
-            get: { viewModel.parsedExpensePreview! },
-            set: { viewModel.parsedExpensePreview = $0 }
+            get: { self.viewModel.parsedExpensePreview! },
+            set: { self.viewModel.parsedExpensePreview = $0 }
         )
     }
     
@@ -177,5 +177,8 @@ struct QuickAddWidgetView: View {
             Spacer()
         }
         .padding()
+        .onDisappear {
+            viewModel.reset()
+        }
     }
 }

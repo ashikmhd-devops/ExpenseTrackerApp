@@ -114,7 +114,7 @@ class OllamaService {
         Output MUST be in strictly valid JSON matching this schema:
         {
           "amount": float, (numeric only, no currency symbols)
-          "category": string, (Must be exactly one of: Food (meals/groceries/restaurants), Fuel (petrol/diesel/EV charging — use amount and time_of_day for ambiguous merchants: e.g. "Shell"/"BP"/"HPCL" at ₹800–3000 during morning is likely Groceries/Food, but at ₹1500+ afternoon/evening is likely Fuel; "Indian Oil"/"Bharat Petroleum" is almost always Fuel), Shopping (clothes/electronics/general retail), Utilities (electricity/water/internet/phone bills), Entertainment (movies/games/subscriptions), Travel (flights/hotels/cabs), Health (doctor/medicine/hospital), Education (school/courses/books), Vehicle (car service/repair/maintenance/insurance), Miscellaneous (anything that doesn't fit above))
+          "category": string, (Must be exactly one of: Food (meals/groceries/restaurants), Fuel (petrol/diesel/EV charging — use amount and time_of_day for ambiguous merchants: e.g. "Shell"/"BP"/"HPCL" at ₹800–3000 during morning is likely Groceries/Food, but at ₹1500+ afternoon/evening is likely Fuel; "Indian Oil"/"Bharat Petroleum" is almost always Fuel), Shopping (clothes/electronics/general retail), Utilities (electricity/water/internet/phone bills), Entertainment (movies/games/subscriptions), Travel (flights/hotels/cabs), Health (doctor/medicine/hospital), Education (school/courses/books), Vehicle (car service/repair/maintenance/insurance), Investment (mutual funds/SIP/stocks/shares/bonds/crypto/demat/trading), Miscellaneous (anything that doesn't fit above))
           "merchant": string, (The name of the store or service)
           "date": string, (ISO8601 date format YYYY-MM-DD. Reference: \(resolvedDateContext()). YEAR RULE: if the user does not mention a year, ALWAYS assume the most recent past occurrence. For month/day (e.g. "Feb 28th", "March 5"): if that date has already passed this year use this year; if it has not yet occurred this year use last year. NEVER output a future date unless the user explicitly says "next" or "upcoming".),
           "note": string (Optional short description or context, leave null if not applicable)
@@ -153,7 +153,10 @@ class OllamaService {
             throw NSError(domain: "OllamaService", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to parse Ollama JSON: \(jsonString)"])
         }
         
-        guard let category = ExpenseCategory(rawValue: parsed.category) else {
+        // Normalize: capitalize first letter so "investment" matches "Investment"
+        let normalizedCategory = parsed.category.prefix(1).uppercased() + parsed.category.dropFirst()
+        guard let category = ExpenseCategory(rawValue: normalizedCategory)
+                          ?? ExpenseCategory.allCases.first(where: { $0.rawValue.lowercased() == parsed.category.lowercased() }) else {
             throw NSError(domain: "OllamaService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid Category returned from Ollama: \(parsed.category)"])
         }
         
@@ -370,6 +373,7 @@ class OllamaService {
            - Health: pharmacy, hospital, doctor, MedPlus, Apollo
            - Education: courses, school fees, books
            - Vehicle: car service, insurance, RTO, repair
+           - Investment: mutual funds, SIP, stocks, shares, bonds, crypto, demat
            - Miscellaneous: anything else
         5. NOTE: One sentence describing what it is (e.g. "Monthly Netflix Premium subscription").
 

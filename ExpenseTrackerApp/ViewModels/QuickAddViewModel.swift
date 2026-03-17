@@ -76,7 +76,9 @@ class QuickAddViewModel: ObservableObject {
     func confirmAndSave() {
         guard let expense = parsedExpensePreview else { return }
         appViewModel.addExpense(expense)
-        reset()
+        // Don't reset here — SwiftUI still holds the Binding and will
+        // call its getter one more time during the dismissal layout pass.
+        // reset() is called from onDisappear in the view instead.
     }
     
     func reset() {
