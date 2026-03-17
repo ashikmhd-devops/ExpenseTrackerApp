@@ -336,6 +336,62 @@ class OllamaService {
         return chatResponse.message.content.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    // MARK: - Category Spending Insight
+
+    /// Generates a 1–2 sentence AI insight for a specific category based on its last N months of spending.
+    /// - Parameters:
+    ///   - category: The expense category name (e.g. "Food").
+    ///   - monthlyTotals: Array of (label: "Mar", total: 4200.0) sorted oldest → newest.
+    func generateCategoryInsight(category: String, monthlyTotals: [(label: String, total: Double)]) async throws -> String {
+        guard !monthlyTotals.isEmpty else { return "No data available for \(category) yet." }
+
+        let breakdown = monthlyTotals
+            .map { "  \($0.label): ₹\(String(format: "%.0f", $0.total))" }
+            .joined(separator: "\n")
+
+        let currentMonth = monthlyTotals.last?.label ?? ""
+        let currentTotal = monthlyTotals.last?.total ?? 0
+        let prevTotal    = monthlyTotals.dropLast().last?.total ?? 0
+
+        var trend = ""
+        if prevTotal > 0 {
+            let pct = ((currentTotal - prevTotal) / prevTotal) * 100
+            if abs(pct) < 2 {
+                trend = "Spending is roughly the same as last month."
+            } else if pct > 0 {
+                trend = "Spending is up \(String(format: "%.0f", pct))% compared to last month."
+            } else {
+                trend = "Spending is down \(String(format: "%.0f", abs(pct)))% compared to last month."
+            }
+        }
+
+        let prompt = """
+        You are a friendly personal finance assistant. The user just opened their \(category) spending history.
+        Here is their spending for the last few months:
+        \(breakdown)
+
+        Current month (\(currentMonth)): ₹\(String(format: "%.0f", currentTotal)). \(trend)
+
+        Write exactly 1–2 encouraging, specific sentences summarising the trend and giving a brief actionable tip. \
+        Do NOT repeat the raw numbers back verbatim. Respond in plain text only (no markdown, no bullet points).
+        """
+
+        let reqBody = OllamaParseRequest(model: modelName, prompt: prompt, stream: false, format: "")
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(reqBody)
+        request.timeoutInterval = 60
+
+        logger.info("Sending category insight request for \(category)")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
+        let ollamaResponse = try JSONDecoder().decode(OllamaParseResponse.self, from: data)
+        return ollamaResponse.response.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     // MARK: - Receipt Vision Scanning
 
     func extractExpenseFromReceipt(imageBase64: String) async throws -> ParsedExpense {

@@ -5,6 +5,7 @@ struct MainDashboardView: View {
     @EnvironmentObject var appViewModel: AppViewModel
     @State private var showingQuickAdd = false
     @State private var showingBudgetEditor = false
+    @State private var selectedHistoryCategory: ExpenseCategory? = nil
     @State private var selectedTab: Int = 0
     @State private var isDropTargeted: Bool = false
     @AppStorage("monthlyBudget") private var monthlyBudget: Double = 50000.0
@@ -67,6 +68,13 @@ struct MainDashboardView: View {
                 ScannedReceiptConfirmView(parsed: parsed)
                     .environmentObject(appViewModel)
             }
+        }
+        .sheet(item: $selectedHistoryCategory) { category in
+            CategoryHistoryView(
+                category: category,
+                monthlyData: appViewModel.monthlyTotals(for: category)
+            )
+            .environmentObject(appViewModel)
         }
         .alert("Error", isPresented: Binding<Bool>(
             get: { appViewModel.errorMessage != nil },
@@ -235,28 +243,45 @@ struct MainDashboardView: View {
                     let ratio   = limit > 0 ? min(used / limit, 1.0) : 0
                     let barTint: Color = ratio > 0.85 ? .red : ratio > 0.65 ? .orange : .green
 
-                    VStack(spacing: 5) {
-                        HStack(spacing: 10) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 7)
-                                    .fill(category.iconBackground)
-                                    .frame(width: 28, height: 28)
-                                Image(systemName: category.icon)
-                                    .foregroundColor(category.iconColor)
-                                    .font(.system(size: 12))
+                    Button {
+                        selectedHistoryCategory = category
+                    } label: {
+                        VStack(spacing: 5) {
+                            HStack(spacing: 10) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 7)
+                                        .fill(category.iconBackground)
+                                        .frame(width: 28, height: 28)
+                                    Image(systemName: category.icon)
+                                        .foregroundColor(category.iconColor)
+                                        .font(.system(size: 12))
+                                }
+                                Text(category.rawValue)
+                                    .font(.system(size: 13))
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                Text("₹\(used, specifier: "%.0f") / ₹\(limit, specifier: "%.0f")")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(ratio > 0.85 ? .red : .secondary)
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .foregroundColor(.secondary.opacity(0.5))
                             }
-                            Text(category.rawValue)
-                                .font(.system(size: 13))
-                            Spacer()
-                            Text("₹\(used, specifier: "%.0f") / ₹\(limit, specifier: "%.0f")")
-                                .font(.system(size: 11))
-                                .foregroundColor(ratio > 0.85 ? .red : .secondary)
+                            ProgressView(value: ratio)
+                                .tint(barTint)
+                                .scaleEffect(y: 0.8, anchor: .center)
                         }
-                        ProgressView(value: ratio)
-                            .tint(barTint)
-                            .scaleEffect(y: 0.8, anchor: .center)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 4)
+                        .contentShape(Rectangle())
                     }
-                    .padding(.horizontal, 20)
+                    .buttonStyle(.plain)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.primary.opacity(0.0))
+                    )
+                    .padding(.horizontal, 4)
+                    .hoverHighlight()
                 }
             }
         }
@@ -497,7 +522,29 @@ struct BudgetEditorView: View {
     }
 }
 
+// MARK: - Hover Highlight Modifier
+
+private struct HoverHighlightModifier: ViewModifier {
+    @State private var isHovered = false
+    func body(content: Content) -> some View {
+        content
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isHovered ? Color.primary.opacity(0.06) : Color.clear)
+                    .animation(.easeOut(duration: 0.15), value: isHovered)
+            )
+            .onHover { isHovered = $0 }
+    }
+}
+
+extension View {
+    func hoverHighlight() -> some View {
+        modifier(HoverHighlightModifier())
+    }
+}
+
 // MARK: - Visual Effect Background
+
 
 struct VisualEffectBackground: NSViewRepresentable {
     func makeNSView(context: Context) -> NSVisualEffectView {

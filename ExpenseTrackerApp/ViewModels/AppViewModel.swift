@@ -8,6 +8,10 @@ class AppViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var insights: String?
     @Published var isGeneratingInsights: Bool = false
+
+    // Category History
+    @Published var categoryInsight: String? = nil
+    @Published var isGeneratingCategoryInsight: Bool = false
     
     // Derived statistics
     var totalSpentThisMonth: Double {
@@ -104,7 +108,59 @@ class AppViewModel: ObservableObject {
             self.isGeneratingInsights = false
         }
     }
-    
+
+    // MARK: - Category History
+
+    /// Returns the last `months` calendar months of spending for a given category,
+    /// ordered oldest → newest, with a 3-letter month label (e.g. "Jan").
+    func monthlyTotals(for category: ExpenseCategory, months: Int = 6) -> [(label: String, total: Double)] {
+        let calendar = Calendar.current
+        let now = Date()
+        let shortMonthSymbols = calendar.shortMonthSymbols   // ["Jan", "Feb", ...]
+
+        // Build the last `months` (year, month) tuples — oldest first
+        var buckets: [(year: Int, month: Int)] = []
+        for offset in stride(from: months - 1, through: 0, by: -1) {
+            guard let date = calendar.date(byAdding: .month, value: -offset, to: now) else { continue }
+            let y = calendar.component(.year,  from: date)
+            let m = calendar.component(.month, from: date)
+            buckets.append((y, m))
+        }
+
+        // Sum amounts for each bucket
+        var totals: [String: Double] = [:]
+        for expense in expenses where expense.category == category {
+            let y = calendar.component(.year,  from: expense.date)
+            let m = calendar.component(.month, from: expense.date)
+            let key = "\(y)-\(m)"
+            totals[key, default: 0] += expense.amount
+        }
+
+        return buckets.map { (year, month) in
+            let key   = "\(year)-\(month)"
+            let label = shortMonthSymbols[month - 1]
+            return (label: label, total: totals[key] ?? 0)
+        }
+    }
+
+    func generateCategoryInsight(for category: ExpenseCategory) {
+        isGeneratingCategoryInsight = true
+        categoryInsight = nil
+        let data = monthlyTotals(for: category)
+        Task {
+            do {
+                let insight = try await OllamaService.shared.generateCategoryInsight(
+                    category: category.rawValue,
+                    monthlyTotals: data
+                )
+                self.categoryInsight = insight
+            } catch {
+                self.categoryInsight = "Couldn't reach Ollama. Make sure it's running (`ollama serve`)."
+            }
+            self.isGeneratingCategoryInsight = false
+        }
+    }
+
     // MARK: - AI Chat
 
     @Published var chatMessages: [ChatMessage] = []
