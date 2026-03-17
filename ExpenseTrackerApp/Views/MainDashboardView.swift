@@ -5,10 +5,39 @@ struct MainDashboardView: View {
     @EnvironmentObject var appViewModel: AppViewModel
     @State private var showingQuickAdd = false
     @State private var showingBudgetEditor = false
-    @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var selectedTab: Int = 0
     @State private var isDropTargeted: Bool = false
     @AppStorage("monthlyBudget") private var monthlyBudget: Double = 50000.0
+    @AppStorage("categoryBudgetsJSON") private var categoryBudgetsJSON: String = "{}"
+
+    private var categoryBudgets: [String: Double] {
+        get {
+            guard let data = categoryBudgetsJSON.data(using: .utf8),
+                  let dict = try? JSONDecoder().decode([String: Double].self, from: data) else { return [:] }
+            return dict
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue),
+               let str = String(data: data, encoding: .utf8) {
+                categoryBudgetsJSON = str
+            }
+        }
+    }
+
+    // Spending per category for current month
+    private var categorySpentThisMonth: [String: Double] {
+        let cal = Calendar.current
+        let now = Date()
+        let month = cal.component(.month, from: now)
+        let year  = cal.component(.year, from: now)
+        var totals: [String: Double] = [:]
+        for expense in appViewModel.expenses {
+            guard cal.component(.month, from: expense.date) == month,
+                  cal.component(.year,  from: expense.date) == year else { continue }
+            totals[expense.category.rawValue, default: 0] += expense.amount
+        }
+        return totals
+    }
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -28,7 +57,7 @@ struct MainDashboardView: View {
                 .frame(width: 420, height: 340)
         }
         .sheet(isPresented: $showingBudgetEditor) {
-            BudgetEditorView(monthlyBudget: $monthlyBudget)
+            BudgetEditorView(monthlyBudget: $monthlyBudget, categoryBudgetsJSON: $categoryBudgetsJSON)
         }
         .sheet(isPresented: Binding(
             get: { appViewModel.scannedExpense != nil },
@@ -52,11 +81,14 @@ struct MainDashboardView: View {
     // MARK: - Expenses Tab
 
     private var expensesTab: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
+        HStack(spacing: 0) {
+            // Sidebar — always visible, no toggle button
             sidebarContent
-                .navigationTitle("Summary")
-                .navigationSplitViewColumnWidth(min: 250, ideal: 280, max: 350)
-        } detail: {
+                .frame(width: 270)
+
+            Divider()
+
+            // Detail pane
             ZStack(alignment: .bottomTrailing) {
                 VStack(spacing: 0) {
                     NLQueryView(selectedTab: $selectedTab)
@@ -79,14 +111,13 @@ struct MainDashboardView: View {
                         .transition(.scale(scale: 0.9).combined(with: .opacity))
                 }
             }
+            .frame(maxWidth: .infinity)
             .animation(.spring(response: 0.3), value: appViewModel.isProcessingReceipt)
-            .navigationTitle("Expenses")
             .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
                 guard let provider = providers.first else { return false }
                 _ = provider.loadItem(forTypeIdentifier: "public.file-url", options: nil) { item, _ in
                     guard let data = item as? Data,
                           let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
-                    // Copy to temp so the security-scoped URL stays valid
                     let tmpURL = FileManager.default.temporaryDirectory
                         .appendingPathComponent(url.lastPathComponent)
                     try? FileManager.default.copyItem(at: url, to: tmpURL)
@@ -106,6 +137,7 @@ struct MainDashboardView: View {
             VStack(spacing: 24) {
                 summaryBanner
                 spendingGauge
+                categoryBudgetsSection
                 insightsSection
             }
             .padding(.vertical, 20)
@@ -180,6 +212,53 @@ struct MainDashboardView: View {
             .gaugeStyle(.accessoryLinear)
             .tint(Gradient(colors: [.green, .yellow, .orange, .red]))
             .padding(.horizontal, 20)
+        }
+    }
+
+    // MARK: - Category Budgets Section
+
+    @ViewBuilder
+    private var categoryBudgetsSection: some View {
+        let budgets = categoryBudgets
+        let spent   = categorySpentThisMonth
+        let tracked = ExpenseCategory.allCases.filter { budgets[$0.rawValue] != nil }
+
+        if !tracked.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Category Budgets")
+                    .font(.headline)
+                    .padding(.horizontal, 20)
+
+                ForEach(tracked, id: \.self) { category in
+                    let limit   = budgets[category.rawValue] ?? 0
+                    let used    = spent[category.rawValue] ?? 0
+                    let ratio   = limit > 0 ? min(used / limit, 1.0) : 0
+                    let barTint: Color = ratio > 0.85 ? .red : ratio > 0.65 ? .orange : .green
+
+                    VStack(spacing: 5) {
+                        HStack(spacing: 10) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 7)
+                                    .fill(category.iconBackground)
+                                    .frame(width: 28, height: 28)
+                                Image(systemName: category.icon)
+                                    .foregroundColor(category.iconColor)
+                                    .font(.system(size: 12))
+                            }
+                            Text(category.rawValue)
+                                .font(.system(size: 13))
+                            Spacer()
+                            Text("₹\(used, specifier: "%.0f") / ₹\(limit, specifier: "%.0f")")
+                                .font(.system(size: 11))
+                                .foregroundColor(ratio > 0.85 ? .red : .secondary)
+                        }
+                        ProgressView(value: ratio)
+                            .tint(barTint)
+                            .scaleEffect(y: 0.8, anchor: .center)
+                    }
+                    .padding(.horizontal, 20)
+                }
+            }
         }
     }
 
@@ -266,49 +345,155 @@ struct MainDashboardView: View {
 
 struct BudgetEditorView: View {
     @Binding var monthlyBudget: Double
+    @Binding var categoryBudgetsJSON: String
     @Environment(\.dismiss) private var dismiss
-    @State private var draftBudget: String = ""
+
+    @State private var draftMonthly: String = ""
+    @State private var draftCategory: [String: String] = [:]
+
+    private var savedCategoryBudgets: [String: Double] {
+        guard let data = categoryBudgetsJSON.data(using: .utf8),
+              let dict = try? JSONDecoder().decode([String: Double].self, from: data) else { return [:] }
+        return dict
+    }
 
     var body: some View {
-        VStack(spacing: 24) {
-            Text("Set Monthly Budget")
-                .font(.system(size: 18, weight: .semibold))
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Monthly limit (₹)")
-                    .font(.system(size: 13))
+        VStack(spacing: 0) {
+            // Header
+            VStack(spacing: 4) {
+                Text("Budget Settings")
+                    .font(.system(size: 18, weight: .semibold))
+                Text("Set spending limits for this month")
+                    .font(.system(size: 12))
                     .foregroundColor(.secondary)
-                HStack {
-                    Text("₹")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(.secondary)
-                    TextField("e.g. 50000", text: $draftBudget)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 24, weight: .bold))
-                }
-                .padding(14)
-                .background(Color.primary.opacity(0.06))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
+            .padding(.top, 24)
+            .padding(.bottom, 16)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+
+                    // Monthly total
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("Monthly Total Limit", systemImage: "calendar")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.secondary)
+                            .textCase(.uppercase)
+                            .tracking(0.4)
+
+                        HStack {
+                            Text("₹")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(.secondary)
+                            TextField("e.g. 50000", text: $draftMonthly)
+                                .textFieldStyle(.plain)
+                                .font(.system(size: 22, weight: .bold))
+                        }
+                        .padding(12)
+                        .background(Color.primary.opacity(0.06))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+
+                    Divider()
+
+                    // Per-category budgets
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Label("Category Limits", systemImage: "tag")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.secondary)
+                                .textCase(.uppercase)
+                                .tracking(0.4)
+                            Spacer()
+                            Text("Leave blank for no limit")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+
+                        ForEach(ExpenseCategory.allCases, id: \.self) { category in
+                            HStack(spacing: 10) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(category.iconBackground)
+                                        .frame(width: 30, height: 30)
+                                    Image(systemName: category.icon)
+                                        .foregroundColor(category.iconColor)
+                                        .font(.system(size: 12))
+                                }
+
+                                Text(category.rawValue)
+                                    .font(.system(size: 13))
+                                    .frame(width: 100, alignment: .leading)
+
+                                HStack(spacing: 4) {
+                                    Text("₹").font(.system(size: 12)).foregroundColor(.secondary)
+                                    TextField("No limit", text: Binding(
+                                        get: { draftCategory[category.rawValue] ?? "" },
+                                        set: { draftCategory[category.rawValue] = $0 }
+                                    ))
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 13))
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
+                                .background(Color.primary.opacity(0.05))
+                                .clipShape(RoundedRectangle(cornerRadius: 7))
+
+                                // Clear button — fixed width to avoid layout shift
+                                Button(action: { draftCategory[category.rawValue] = "" }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.secondary)
+                                        .font(.system(size: 13))
+                                }
+                                .buttonStyle(.plain)
+                                .opacity((draftCategory[category.rawValue] ?? "").isEmpty ? 0 : 1)
+                            }
+                        }
+                    }
+                }
+                .padding(20)
+            }
+
+            Divider()
 
             HStack(spacing: 12) {
                 Button("Cancel") { dismiss() }
                     .buttonStyle(.bordered)
-                Button("Save") {
-                    if let value = Double(draftBudget.filter { $0.isNumber || $0 == "." }), value > 0 {
-                        monthlyBudget = value
-                    }
-                    dismiss()
+                Spacer()
+                Button("Save") { saveAndDismiss() }
+                    .buttonStyle(.borderedProminent)
+            }
+            .padding(20)
+        }
+        .frame(width: 420, height: 580)
+        .onAppear {
+            draftMonthly = String(format: "%.0f", monthlyBudget)
+            let existing = savedCategoryBudgets
+            for category in ExpenseCategory.allCases {
+                if let budget = existing[category.rawValue], budget > 0 {
+                    draftCategory[category.rawValue] = String(format: "%.0f", budget)
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(Double(draftBudget.filter { $0.isNumber || $0 == "." }) == nil)
             }
         }
-        .padding(28)
-        .frame(width: 320)
-        .onAppear {
-            draftBudget = String(format: "%.0f", monthlyBudget)
+    }
+
+    private func saveAndDismiss() {
+        if let value = Double(draftMonthly.filter { $0.isNumber || $0 == "." }), value > 0 {
+            monthlyBudget = value
         }
+        var updated: [String: Double] = [:]
+        for (key, str) in draftCategory {
+            if let value = Double(str.filter { $0.isNumber || $0 == "." }), value > 0 {
+                updated[key] = value
+            }
+        }
+        if let data = try? JSONEncoder().encode(updated),
+           let str = String(data: data, encoding: .utf8) {
+            categoryBudgetsJSON = str
+        }
+        dismiss()
     }
 }
 
