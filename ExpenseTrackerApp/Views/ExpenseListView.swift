@@ -90,7 +90,7 @@ struct ExpenseRowView: View {
 struct ExpenseListView: View {
     @EnvironmentObject var appViewModel: AppViewModel
     @State private var showClearConfirmation = false
-    @State private var selection: Set<String> = []
+    @State private var selection: Set<UUID> = []
     @State private var expenseToDelete: Expense?
     @State private var expenseToEdit: Expense?
 

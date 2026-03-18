@@ -12,7 +12,7 @@ class DatabaseService {
         do {
             try setupDatabase()
         } catch {
-            logger.error("Failed to initialize database: \(error.localizedDescription)")
+            fatalError("Failed to initialize database: \(error)")
         }
     }
     
@@ -83,9 +83,77 @@ class DatabaseService {
     }
     
     // MARK: - Raw SQL Execution
-    
+
+    enum QueryValidationError: LocalizedError {
+        case notSelectStatement
+        case forbiddenKeyword(String)
+        case forbiddenTable(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .notSelectStatement:
+                return "Only SELECT queries are allowed."
+            case .forbiddenKeyword(let kw):
+                return "Query contains forbidden keyword: \(kw)"
+            case .forbiddenTable(let t):
+                return "Query references forbidden table: \(t)"
+            }
+        }
+    }
+
+    /// Validates that a LLM-generated SQL string is a read-only SELECT against
+    /// the `expense` table only. Throws `QueryValidationError` on any violation.
+    private func validateSelectQuery(_ sql: String) throws {
+        let normalized = sql
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+
+        // Must start with SELECT (case-insensitive)
+        guard normalized.uppercased().hasPrefix("SELECT") else {
+            throw QueryValidationError.notSelectStatement
+        }
+
+        // Tokenize by splitting on non-alphanumeric boundaries for keyword matching
+        let upperSQL = normalized.uppercased()
+
+        // Block any write or schema-manipulation keyword
+        let forbidden = [
+            "INSERT", "UPDATE", "DELETE", "DROP", "CREATE", "ALTER",
+            "ATTACH", "DETACH", "PRAGMA", "VACUUM", "REINDEX",
+            "REPLACE", "TRUNCATE", "RENAME", "GRANT", "REVOKE",
+            "BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT",
+            "--", "/*", ";"
+        ]
+        for kw in forbidden {
+            // Use word-boundary check: keyword must not be part of a longer token
+            let pattern = "(^|[^A-Z0-9_])\(NSRegularExpression.escapedPattern(for: kw))([^A-Z0-9_]|$)"
+            if let regex = try? NSRegularExpression(pattern: pattern),
+               regex.firstMatch(in: upperSQL, range: NSRange(upperSQL.startIndex..., in: upperSQL)) != nil {
+                throw QueryValidationError.forbiddenKeyword(kw)
+            }
+        }
+
+        // Only allow querying the `expense` table
+        let allowedTables: Set<String> = ["EXPENSE"]
+        // Extract identifiers that follow FROM or JOIN
+        let fromJoinPattern = "(?:FROM|JOIN)\\s+([A-Z_][A-Z0-9_]*)"
+        if let regex = try? NSRegularExpression(pattern: fromJoinPattern) {
+            let matches = regex.matches(in: upperSQL, range: NSRange(upperSQL.startIndex..., in: upperSQL))
+            for match in matches {
+                if let range = Range(match.range(at: 1), in: upperSQL) {
+                    let tableName = String(upperSQL[range])
+                    if !allowedTables.contains(tableName) {
+                        throw QueryValidationError.forbiddenTable(tableName.lowercased())
+                    }
+                }
+            }
+        }
+    }
+
     func executeRawQuery(_ sql: String) throws -> [[String: String]] {
-        try dbWriter.read { db in
+        try validateSelectQuery(sql)
+        return try dbWriter.read { db in
             let rows = try Row.fetchAll(db, sql: sql)
             var result: [[String: String]] = []
             

@@ -48,26 +48,28 @@ class AppViewModel: ObservableObject {
     }
     
     func deleteExpense(at offsets: IndexSet) {
-        offsets.forEach { index in
-            let expense = expenses[index]
-            do {
-                try DatabaseService.shared.deleteExpense(expense)
-            } catch {
-                errorMessage = "Failed to delete expense: \(error.localizedDescription)"
-            }
-        }
-        fetchExpenses()
+        let toDelete = offsets.map { expenses[$0] }
+        commitDeletes(toDelete)
     }
 
-    func deleteExpenses(withIDs ids: Set<String>) {
-        expenses.filter { ids.contains($0.id) }.forEach { expense in
+    func deleteExpenses(withIDs ids: Set<UUID>) {
+        let toDelete = expenses.filter { ids.contains($0.id) }
+        commitDeletes(toDelete)
+    }
+
+    private func commitDeletes(_ items: [Expense]) {
+        var failures: [String] = []
+        for expense in items {
             do {
                 try DatabaseService.shared.deleteExpense(expense)
             } catch {
-                errorMessage = "Failed to delete expense: \(error.localizedDescription)"
+                failures.append("\(expense.merchant): \(error.localizedDescription)")
             }
         }
         fetchExpenses()
+        if !failures.isEmpty {
+            errorMessage = "Failed to delete \(failures.count) item(s):\n" + failures.joined(separator: "\n")
+        }
     }
 
     func clearAllExpenses() {
