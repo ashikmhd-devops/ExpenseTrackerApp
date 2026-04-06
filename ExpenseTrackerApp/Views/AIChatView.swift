@@ -28,7 +28,7 @@ struct AIChatView: View {
                                     : .default,
                                 value: pulseScale
                             )
-                        Text(ollamaOnline ? "Ollama · llama3.2 · Ready" : "Ollama · Offline")
+                        Text(ollamaOnline ? "Ollama · gemma4 · Ready" : "Ollama · Offline")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                     }
