@@ -39,6 +39,13 @@ struct ExpenseRowView: View {
                 }
                 .font(.system(size: 11))
                 .foregroundColor(.white.opacity(0.55))
+                if let note = expense.note, !note.isEmpty {
+                    Text(note)
+                        .font(.system(size: 11))
+                        .foregroundColor(.white.opacity(0.40))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
             }
 
             Spacer()
