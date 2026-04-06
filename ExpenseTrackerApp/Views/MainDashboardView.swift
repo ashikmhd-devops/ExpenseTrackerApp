@@ -246,33 +246,36 @@ struct MainDashboardView: View {
                     Button {
                         selectedHistoryCategory = category
                     } label: {
-                        VStack(spacing: 5) {
-                            HStack(spacing: 10) {
+                        VStack(spacing: 4) {
+                            HStack(spacing: 8) {
                                 ZStack {
                                     RoundedRectangle(cornerRadius: 7)
                                         .fill(category.iconBackground)
-                                        .frame(width: 28, height: 28)
+                                        .frame(width: 26, height: 26)
                                     Image(systemName: category.icon)
                                         .foregroundColor(category.iconColor)
-                                        .font(.system(size: 12))
+                                        .font(.system(size: 11))
                                 }
                                 Text(category.rawValue)
-                                    .font(.system(size: 13))
+                                    .font(.system(size: 12, weight: .medium))
                                     .foregroundColor(.primary)
-                                Spacer()
-                                Text("₹\(used, specifier: "%.0f") / ₹\(limit, specifier: "%.0f")")
-                                    .font(.system(size: 11))
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                Spacer(minLength: 4)
+                                Text("₹\(used, specifier: "%.0f")/₹\(limit, specifier: "%.0f")")
+                                    .font(.system(size: 10).monospacedDigit())
                                     .foregroundColor(ratio > 0.85 ? .red : .secondary)
+                                    .lineLimit(1)
                                 Image(systemName: "chevron.right")
                                     .font(.system(size: 9, weight: .semibold))
-                                    .foregroundColor(.secondary.opacity(0.5))
+                                    .foregroundColor(.secondary.opacity(0.4))
                             }
                             ProgressView(value: ratio)
                                 .tint(barTint)
-                                .scaleEffect(y: 0.8, anchor: .center)
+                                .scaleEffect(y: 0.7, anchor: .center)
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 5)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)

@@ -87,27 +87,131 @@ struct ExpenseRowView: View {
     }
 }
 
+// MARK: - Month group model
+
+private struct MonthGroup: Identifiable {
+    let id: String        // "March 2026"
+    let year: Int
+    let month: Int
+    var expenses: [Expense]
+
+    var total: Double { expenses.reduce(0) { $0 + $1.amount } }
+}
+
+private func buildMonthGroups(from expenses: [Expense]) -> [MonthGroup] {
+    let cal = Calendar.current
+    var dict: [String: MonthGroup] = [:]
+    let fmt = DateFormatter()
+    fmt.dateFormat = "MMMM yyyy"
+
+    for expense in expenses {
+        let key = fmt.string(from: expense.date)
+        let comps = cal.dateComponents([.year, .month], from: expense.date)
+        if dict[key] == nil {
+            dict[key] = MonthGroup(id: key, year: comps.year ?? 0, month: comps.month ?? 0, expenses: [])
+        }
+        dict[key]!.expenses.append(expense)
+    }
+
+    return dict.values.sorted {
+        $0.year != $1.year ? $0.year > $1.year : $0.month > $1.month
+    }
+}
+
+// MARK: - Month section header
+
+private struct MonthSectionHeader: View {
+    let group: MonthGroup
+    let isExpanded: Bool
+    let toggle: () -> Void
+
+    var body: some View {
+        Button(action: toggle) {
+            HStack(spacing: 8) {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .frame(width: 12)
+
+                Text(group.id)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.primary)
+
+                Spacer()
+
+                Text("\(group.expenses.count) expense\(group.expenses.count == 1 ? "" : "s")")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+
+                Text("₹\(group.total, specifier: "%.0f")")
+                    .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - ExpenseListView
+
 struct ExpenseListView: View {
     @EnvironmentObject var appViewModel: AppViewModel
     @State private var showClearConfirmation = false
     @State private var selection: Set<UUID> = []
     @State private var expenseToDelete: Expense?
     @State private var expenseToEdit: Expense?
+    @State private var expandedMonths: Set<String> = []
+
+    private var monthGroups: [MonthGroup] {
+        buildMonthGroups(from: appViewModel.expenses)
+    }
+
+    private var currentMonthKey: String {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "MMMM yyyy"
+        return fmt.string(from: Date())
+    }
 
     var body: some View {
         List(selection: $selection) {
-            ForEach(appViewModel.expenses) { expense in
-                ExpenseRowView(
-                    expense: expense,
-                    isSelected: selection.contains(expense.id),
-                    onDelete: { expenseToDelete = expense },
-                    onEdit: { expenseToEdit = expense }
-                )
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 20))
+            ForEach(monthGroups) { group in
+                Section {
+                    if expandedMonths.contains(group.id) {
+                        ForEach(group.expenses) { expense in
+                            ExpenseRowView(
+                                expense: expense,
+                                isSelected: selection.contains(expense.id),
+                                onDelete: { expenseToDelete = expense },
+                                onEdit: { expenseToEdit = expense }
+                            )
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 20))
+                        }
+                        .onDelete { offsets in
+                            let toDelete = offsets.map { group.expenses[$0] }
+                            appViewModel.commitDeletes(toDelete)
+                        }
+                    }
+                } header: {
+                    MonthSectionHeader(
+                        group: group,
+                        isExpanded: expandedMonths.contains(group.id)
+                    ) {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            if expandedMonths.contains(group.id) {
+                                expandedMonths.remove(group.id)
+                            } else {
+                                expandedMonths.insert(group.id)
+                            }
+                        }
+                    }
+                    .listRowInsets(EdgeInsets())
+                }
             }
-            .onDelete(perform: appViewModel.deleteExpense)
         }
         .scrollContentBackground(.hidden)
         .navigationTitle("Expenses")
@@ -119,6 +223,17 @@ struct ExpenseListView: View {
                     Label("Clear All", systemImage: "trash.fill")
                 }
                 .disabled(appViewModel.expenses.isEmpty)
+            }
+        }
+        .onAppear {
+            expandedMonths.insert(currentMonthKey)
+        }
+        .onChange(of: appViewModel.expenses) { _ in
+            // If a new month appears, expand it automatically
+            let keys = Set(monthGroups.map(\.id))
+            let newKey = currentMonthKey
+            if keys.contains(newKey) {
+                expandedMonths.insert(newKey)
             }
         }
         .confirmationDialog("Clear all expenses?", isPresented: $showClearConfirmation, titleVisibility: .visible) {

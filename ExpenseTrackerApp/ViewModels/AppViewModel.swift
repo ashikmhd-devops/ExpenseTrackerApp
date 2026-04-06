@@ -57,7 +57,7 @@ class AppViewModel: ObservableObject {
         commitDeletes(toDelete)
     }
 
-    private func commitDeletes(_ items: [Expense]) {
+    func commitDeletes(_ items: [Expense]) {
         var failures: [String] = []
         for expense in items {
             do {
