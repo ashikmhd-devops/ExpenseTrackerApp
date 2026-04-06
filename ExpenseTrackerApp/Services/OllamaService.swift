@@ -51,7 +51,7 @@ class OllamaService {
     static let shared = OllamaService()
     
     private let endpoint = URL(string: "http://127.0.0.1:11434/api/generate")!
-    private let modelName = "llama3.2:latest"
+    private let modelName = "gemma4:latest"
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "LocalExpenseTracker", category: "Ollama")
     
     private func resolvedDateContext() -> String {
@@ -400,63 +400,74 @@ class OllamaService {
         let todayStr = isoFormatter.string(from: Date())
 
         let prompt = """
-        You are a transaction extraction assistant. The image may be ANY of:
-        - A physical or digital receipt
-        - A bank SMS or email notification
-        - A UPI/IMPS/NEFT debit alert (e.g. from HDFC, SBI, ICICI, Paytm, PhonePe)
-        - A credit card statement row or screenshot
+        You are a financial document parser. The image may be ANY of:
+        - A physical or digital receipt / invoice
+        - A bank SMS or push notification (UPI/IMPS/NEFT debit alert from HDFC, SBI, ICICI, etc.)
+        - A mutual fund / stock / SIP purchase confirmation (from IndMoney, Zerodha, Groww, Kuvera, etc.)
+        - A credit card statement row or e-mail receipt
 
-        INSTRUCTIONS — READ EVERY WORD IN THE IMAGE CAREFULLY. Do NOT guess or invent values.
+        CRITICAL: Read every cell in every table carefully. Do NOT hallucinate values not present in the image.
 
-        1. AMOUNT: Look for "Rs.", "₹", "INR", "debited", "amount", "total", "paid". Extract the numeric value only (e.g. 199.00).
-        2. MERCHANT:
-           - For a UPI VPA like "netflixupi.payu@hdfcbank" → extract "Netflix"
-           - For "SWIGGY.COM", "ZOMATO", "AMAZON PAY" → use the brand name
-           - For a shop receipt → use the store name at the top
-           - Clean up: strip .COM, PAY, UPI, bank suffixes; capitalize properly
-        3. DATE: Common Indian bank formats → convert to YYYY-MM-DD:
-           - "16-03-26" or "16/03/26" = DD-MM-YY → 2026-03-16
-           - "16-03-2026" = DD-MM-YYYY → 2026-03-16
+        === EXTRACTION RULES ===
+
+        1. AMOUNT
+           - Look for: "Rs.", "₹", "INR", "Amount", "Amount / Units", "debited", "total", "paid"
+           - For "Amount / Units: 20,000.00 / 0" → amount = 20000.00  (left side before the slash is ₹)
+           - Extract numeric value only, no currency symbols.
+
+        2. MERCHANT
+           - Mutual fund confirmation → use the fund house or app name (e.g. "IndMoney", "Groww", "Zerodha")
+           - UPI VPA like "netflixupi.payu@hdfcbank" → "Netflix"
+           - "SWIGGY.COM", "ZOMATO", "AMAZON PAY" → brand name only
+           - Shop receipt → store name at top of receipt
+           - Strip .COM / PAY / UPI / bank suffixes; capitalize properly.
+
+        3. DATE
+           - Indian bank formats (DD-MM-YY or DD-MM-YYYY or DD/MM/YYYY) → YYYY-MM-DD
+             e.g. "16-03-26" → 2026-03-16 | "16-03-2026" → 2026-03-16
            - "Mar 16, 2026" → 2026-03-16
-           - Use \(todayStr) only if no date is visible at all
-        4. CATEGORY — pick the single best match:
+           - If no date visible, use \(todayStr).
+
+        4. CATEGORY — choose exactly one:
            - Food: restaurants, food delivery, grocery, Swiggy, Zomato, BigBasket
-           - Fuel: petrol, diesel, HPCL, BPCL, IndianOil, Shell fuel
-           - Shopping: Amazon, Flipkart, Myntra, clothing, electronics
+           - Fuel: petrol, diesel, HPCL, BPCL, IndianOil, Shell fuel station
+           - Shopping: Amazon, Flipkart, Myntra, clothing, electronics, retail
            - Utilities: electricity, water, gas, internet, mobile recharge, JIO, Airtel, BSNL
            - Entertainment: Netflix, Spotify, YouTube Premium, OTT, movies, games
            - Travel: flights, hotels, Uber, Ola, MakeMyTrip, IRCTC, train, cab
            - Health: pharmacy, hospital, doctor, MedPlus, Apollo
-           - Education: courses, school fees, books
-           - Vehicle: car service, insurance, RTO, repair
-           - Investment: mutual funds, SIP, stocks, shares, bonds, crypto, demat
-           - Credit Card Bill: credit card payment, bill payment, outstanding due, HDFC card, ICICI card, SBI card, Axis card
-           - Miscellaneous: anything else
-        5. NOTE: One sentence describing what it is (e.g. "Monthly Netflix Premium subscription").
+           - Education: courses, school fees, tuition, books
+           - Vehicle: car service, insurance, RTO, repair, maintenance
+           - Investment: mutual fund PURCHASE/SIP, stocks, shares, bonds, crypto, demat, index fund, ETF, IndMoney, Groww, Zerodha, Kuvera — if the document says "Transaction: PURCHASE" and shows a "Scheme" name, this is ALWAYS Investment
+           - Credit Card Bill: credit card payment, bill payment, card outstanding/due
+           - Miscellaneous: anything that doesn't fit above
 
-        Output ONLY valid JSON, no other text:
+        5. NOTE — one concise sentence (e.g. "SIP purchase of Nifty 50 Equal Weight Index Fund via IndMoney").
+
+        Output ONLY valid JSON, no markdown, no explanation:
         {
           "amount": <number>,
           "category": "<category>",
-          "merchant": "<clean merchant name>",
+          "merchant": "<merchant name>",
           "date": "<YYYY-MM-DD>",
-          "note": "<description or null>"
+          "note": "<description>"
         }
         """
 
-        let reqBody = OllamaVisionRequest(model: "llava:latest", prompt: prompt, images: [imageBase64], stream: false, format: "json")
+        let reqBody = OllamaVisionRequest(model: modelName, prompt: prompt, images: [imageBase64], stream: false, format: "json")
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(reqBody)
         request.timeoutInterval = 120
 
-        logger.info("Sending vision request to Ollama (llava)")
+        let visionModel = modelName
+        logger.info("Sending vision request to Ollama (\(visionModel))")
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw NSError(domain: "OllamaService", code: 4,
-                          userInfo: [NSLocalizedDescriptionKey: "Vision model unavailable. Run: ollama pull llava"])
+                          userInfo: [NSLocalizedDescriptionKey: "Vision request failed. Ensure \(self.modelName) is running in Ollama."])
         }
 
         let ollamaResponse = try JSONDecoder().decode(OllamaParseResponse.self, from: data)
